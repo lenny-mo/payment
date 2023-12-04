@@ -1,0 +1,70 @@
+syntax = "proto3";
+
+package go.micro.service.payment;
+
+option go_package="./payment";
+
+service PaymentService {
+	// 发起支付请求	
+	// 获取订单ID，查阅order 表 获取 userid, user email, 
+	// 根据order_item的ID和timestamp查询价格表 item_price, 相加每件商品价格得到总价
+	// 通过paypal查询用户是否有足够余额
+	// 如果充足则扣费并且交易记录要直接写入数据库，否则返回余额不足错误
+	rpc MakePayment (MakePaymentRequest) returns (MakePaymentResponse);
+
+	// 查询订单支付状态, 根据payment订单的ID
+    // 1. 接收GetPaymentStatusRequest中的支付订单ID。
+    // 2. 根据支付订单ID查询支付系统数据库，获取当前支付状态。
+    // 3. 考虑到支付可能是异步完成的，确保实时或定时查询支付渠道，获取最新状态。
+    // 4. 如果长时间未收到支付结果通知，触发主动查询流程，确保及时更新支付状态。
+    // 5. 返回支付状态，包括成功、失败、处理中等状态信息。
+	rpc GetPaymentStatus (GetPaymentStatusRequest) returns (GetPaymentStatusResponse);
+	
+
+	// 退款请求
+    // 1. 接收RefundPaymentRequest中的支付订单ID和退款理由。
+    // 2. 验证订单支付状态，确保订单已支付且在可退款的时间窗口内。
+    // 3. 调用第三方支付服务执行退款操作，处理可能的异常情况，如支付渠道维护或网络问题。
+    // 4. 退款成功后，更新订单状态和账务系统，确保数据的一致性。
+    // 5. 考虑到退款操作的敏感性，确保严格的安全措施，如数据加密和权限验证。
+    // 6. 提供退款成功或失败的响应，包含相关的退款信息。
+	rpc RefundPayment (RefundPaymentRequest) returns (RefundPaymentResponse);
+}
+
+// payment transaction 表结构体
+message Payment {
+	int64 TransactionId = 1;
+	int64 OrderId =2;
+	int32 TransactionStatus = 3;
+	string PaymentMethod =4;
+}
+
+
+// 
+message MakePaymentRequest {
+	int64 OrderId = 1;
+	int64 UserId = 2;
+}
+
+message MakePaymentResponse {
+	int32 Code = 1;
+	string  CodeMsg = 2; 
+	int64 PaymentID = 3;	// 如果成功，返回入库的UUID，否则返回一个0
+}
+
+
+message GetPaymentStatusRequest {
+	int64 PaymentId = 1;
+} 
+
+message GetPaymentStatusResponse {
+	Payment PaymentData =1;
+}
+
+message RefundPaymentRequest {
+	int64 PaymentId =1;
+}
+
+message RefundPaymentResponse {
+	Payment PaymentData =1;
+}
