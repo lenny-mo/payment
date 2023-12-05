@@ -1,4 +1,5 @@
 package services
+
 // 业务代码
 
 import (
@@ -13,7 +14,7 @@ type PaymentServiceInterface interface {
 	// 返回rowaffected
 	UpdatePaymentRecord(models.Payment) (int64, error)
 }
-
+	
 type PaymentService struct {
 	Dao dao.PaymentDAO
 }
@@ -61,11 +62,13 @@ func NewPaymentService(dao dao.PaymentDAO) PaymentServiceInterface {
 func (p *PaymentService) CreatePaymentRecord(payment models.Payment) (int64, error) {
 
 	// 1 处理支付渠道的异常故障或网络问题时，实施及时熔断
+	// 获取paypal 的token
+	// 再创建订单
 
-	// 2 支付订单超时关闭 采用MQ延时队列（如RabbitMQ）处理超时订单
+	// 2 支付订单超时关闭 采用MQ延时队列（Kafka）处理超时订单
 
-	// 3 支付结果通知上游使用延时重试队列
-
+	// 3 支付结果通知上游使用kafka 延时重试队列
+	
 	return 0, nil
 }
 
