@@ -86,9 +86,6 @@ func (p *PaymentService) CreatePaymentRecord(payment models.Payment) (int64, err
 	// 这里可以先尝试在控制台打印url
 	fmt.Println(userPayURL)
 	// paypal 需要商家主动获取订单信息
-	// 商家尝试轮询capture order payment info，判断用户是否成功支付，如果超过15mins，该订单标记为失败
-	// 采用 kafka 延时队列
-	// 如果在15mins没有capture到用户支付成功信息，订单进行超时关闭
 
 	var rowAffected int64
 	ch := make(chan chanData, 1)
@@ -103,9 +100,11 @@ outerloop:
 			defer wg.Done()
 			ok, err := paypal.CapturePayment(orderId, paymentRequestId, accessToken)
 			if ok {
-				ch <- chanData{
-					ok:  ok,
-					err: err,
+				select {
+				case ch <- chanData{ok: ok, err: err}:
+					return
+				default:
+					return // ch阻塞，说明已经成功拿到支付信息, 退出
 				}
 			}
 		}(&wg)
