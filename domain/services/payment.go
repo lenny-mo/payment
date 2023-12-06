@@ -3,8 +3,14 @@ package services
 // 业务代码
 
 import (
+	"errors"
+	"fmt"
 	"payment/domain/dao"
 	"payment/domain/models"
+	"payment/middleware"
+	"payment/paypal"
+	"sync"
+	"time"
 )
 
 type PaymentServiceInterface interface {
@@ -14,7 +20,12 @@ type PaymentServiceInterface interface {
 	// 返回rowaffected
 	UpdatePaymentRecord(models.Payment) (int64, error)
 }
-	
+
+type chanData struct {
+	ok  bool
+	err error
+}
+
 type PaymentService struct {
 	Dao dao.PaymentDAO
 }
@@ -63,13 +74,61 @@ func (p *PaymentService) CreatePaymentRecord(payment models.Payment) (int64, err
 
 	// 1 处理支付渠道的异常故障或网络问题时，实施及时熔断
 	// 获取paypal 的token
+	accessToken := paypal.GenerateToken()
+	// 生成一个payment request id
+	paymentRequestId := paypal.UUID()
+	// 计算订单的总金额
+	amount := "100"
 	// 再创建订单
+	orderMapping := paypal.CreateOrder(accessToken, paymentRequestId, amount)
+	// 获取创建的订单id和需要用户支付的url
+	orderId, userPayURL := orderMapping["id"], orderMapping["payer-action"]
+	// 这里可以先尝试在控制台打印url
+	fmt.Println(userPayURL)
+	// paypal 需要商家主动获取订单信息
+	// 商家尝试轮询capture order payment info，判断用户是否成功支付，如果超过15mins，该订单标记为失败
+	// 采用 kafka 延时队列
+	// 如果在15mins没有capture到用户支付成功信息，订单进行超时关闭
 
-	// 2 支付订单超时关闭 采用MQ延时队列（Kafka）处理超时订单
+	var rowAffected int64
+	ch := make(chan chanData, 1)
+	timer := time.NewTimer(15 * time.Minute)
 
-	// 3 支付结果通知上游使用kafka 延时重试队列
-	
-	return 0, nil
+	var wg sync.WaitGroup
+outerloop:
+	for {
+		// 持续监听用户支付信息
+		wg.Add(1)
+		go func(wg *sync.WaitGroup) {
+			defer wg.Done()
+			ok, err := paypal.CapturePayment(orderId, paymentRequestId, accessToken)
+			if ok {
+				ch <- chanData{
+					ok:  ok,
+					err: err,
+				}
+			}
+		}(&wg)
+
+		select {
+		case <-timer.C:
+			// 等待15mins，如果倒计时到了，就返回支付失败, 结束所有的goroutine
+			return 0, errors.New("user doesn't pay the order")
+		case <-ch:
+			// 如果成功，则把payment 先写入数据库，再更新redis缓存
+			wg.Wait()                                           // 等待所有goroutine都退出
+			rowAffected, _ = p.Dao.CreatePaymentRecord(payment) // 存储进入数据库
+			middleware.RedisStore(payment)                      // 更新缓存
+			break outerloop                                     //跳出当前for循环
+		default:
+			time.Sleep(time.Second)
+			fmt.Println("waiting for user paying the order")
+		}
+	}
+
+	// 支付结果通知上游使用kafka 延时重试队列
+	fmt.Println("receive payment from buyer")
+	return rowAffected, nil
 }
 
 func (p *PaymentService) FindPaymentRecordById(paymentId int64) (models.Payment, error) {
