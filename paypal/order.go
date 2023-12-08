@@ -31,7 +31,7 @@ type ResponseData struct {
 // 返回一个map, 包含 订单ID, self, and payer-action 链接给用户，用户需要使用payer-action link 来执行支付
 func CreateOrder(accessToken, paypalRequestID, amount string) map[string]string {
 	// 生成 reference_id 和 PayPal-Request-Id
-	referenceID := uuID()
+	referenceID := UUID()
 
 	// 构建请求体
 	requestBody := []byte(`{
@@ -159,7 +159,7 @@ func CapturePayment(orderId, paypalRequestId, accessToken string) (bool, error) 
 	}
 }
 
-func uuID() string {
+func UUID() string {
 	// 生成一个随机的UUID作为请求ID
 	requestID := uuid.New().String()
 	return requestID

@@ -10,7 +10,8 @@ import (
 	"time"
 )
 
-func GenerateToken() interface{} {
+// GenerateToken 返回一个access token, 用于商家创建订单
+func GenerateToken() string {
 	// 设置 PayPal 的客户端ID和客户端密钥
 	clientID := "AeMmhtIC6Azh6dBFuLgqEdg3-RXdJ9QYWILHpvmWtUsF01EoT3gZnRl-rC8DtTEUoKdOiHtbh21VkDLz"
 	clientSecret := "EOnSXtZAb4APnDWkUiZKUFqEqQMV6_VFTLvjPnP-hUBW1wcJoEzsHS04RzSeM4Qjx1jdD96rOlcB5iYC"
@@ -30,7 +31,7 @@ func GenerateToken() interface{} {
 	req, err := http.NewRequest("POST", "https://api-m.sandbox.paypal.com/v1/oauth2/token", requestBody)
 	if err != nil {
 		fmt.Println("创建HTTP POST 请求出错")
-		return nil
+		return ""
 	}
 
 	// 设置请求头，包括授权头
@@ -41,7 +42,7 @@ func GenerateToken() interface{} {
 	resp, err := client.Do(req)
 	if err != nil {
 		fmt.Println("发送请求时发生错误:", err)
-		return nil
+		return ""
 	}
 	defer resp.Body.Close()
 
@@ -49,16 +50,16 @@ func GenerateToken() interface{} {
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		fmt.Println("读取响应时发生错误:", err)
-		return nil
+		return ""
 	}
 
 	// 创建一个结构体存储json 数据
 	var responsemap map[string]interface{}
 	if err := json.Unmarshal(body, &responsemap); err != nil {
 		fmt.Println("解析出错")
-		return nil
+		return ""
 	}
 
 	accessToken := responsemap["access_token"]
-	return accessToken
+	return accessToken.(string)
 }

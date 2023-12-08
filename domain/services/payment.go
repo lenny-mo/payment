@@ -3,12 +3,14 @@ package services
 // 业务代码
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"payment/domain/dao"
 	"payment/domain/models"
 	"payment/middleware"
 	"payment/paypal"
+	"strconv"
 	"sync"
 	"time"
 )
@@ -16,7 +18,7 @@ import (
 type PaymentServiceInterface interface {
 	// 返回payment 雪花算法ID
 	CreatePaymentRecord(models.Payment) (int64, error)
-	FindPaymentRecordById(int64) (models.Payment, error)
+	FindPaymentRecordById(string) (models.Payment, error)
 	// 返回rowaffected
 	UpdatePaymentRecord(models.Payment) (int64, error)
 }
@@ -48,28 +50,7 @@ func NewPaymentService(dao dao.PaymentDAO) PaymentServiceInterface {
 //	int64 - 成功创建的支付记录的ID。这个ID是支付订单的唯一标识，可以用于后续的查询、更新等操作。
 //	error - 如果在创建支付记录的过程中发生错误，则返回相应的错误信息。如果没有错误发生，则返回nil。
 //
-// 流程说明:
-//  1. 验证payment对象中的数据是否完整和有效。
-//  2. 将payment对象的数据保存到数据库中。
-//  3. 如果数据库操作成功，返回新创建的支付记录的ID。
-//  4. 如果在任何步骤中发生错误，捕获错误并返回。
-//
-// 注意:
-//   - 此函数不直接处理与支付网关的交互，它只负责处理与支付记录相关的内部逻辑。
-//   - 需要确保传入的payment对象符合业务规则和数据完整性要求。
-//   - 函数实现应考虑到事务性，确保数据的一致性和完整性。
-//   - 考虑到支付订单的超时问题，可以在此函数中实现MQ延时队列逻辑，当订单超时未支付时自动关闭订单。
-//     这部分逻辑可以通过发送一个延时消息到MQ，该消息包含订单ID和超时时间。当消息被消费时，
-//     检查订单状态并根据需要更新订单状态为“已关闭”。
-//
-// 示例:
-//
-//	paymentRecord := models.Payment{UserID: "1234", Amount: 100.00, Method: "CreditCard"}
-//	recordID, err := paymentService.CreatePaymentRecord(paymentRecord)
-//	if err != nil {
-//	    // 处理错误
-//	}
-//	// 使用recordID进行后续操作
+// TODO: 添加熔断
 func (p *PaymentService) CreatePaymentRecord(payment models.Payment) (int64, error) {
 
 	// 1 处理支付渠道的异常故障或网络问题时，实施及时熔断
@@ -115,34 +96,54 @@ outerloop:
 			return 0, errors.New("user doesn't pay the order")
 		case <-ch:
 			// 如果成功，则把payment 先写入数据库，再更新redis缓存
-			wg.Wait()                                           // 等待所有goroutine都退出
-			rowAffected, _ = p.Dao.CreatePaymentRecord(payment) // 存储进入数据库
-			middleware.RedisStore(payment)                      // 更新缓存
-			break outerloop                                     //跳出当前for循环
+			wg.Wait()                                                            // 等待所有goroutine都退出
+			rowAffected, _ = p.Dao.CreatePaymentRecord(payment)                  // 存储进入数据库
+			middleware.RedisSet(strconv.FormatInt(payment.OrderId, 10), payment) // 更新缓存
+			break outerloop                                                      //跳出当前for循环
 		default:
 			time.Sleep(time.Second)
 			fmt.Println("waiting for user paying the order")
 		}
 	}
 
-	// 支付结果通知上游使用kafka 延时重试队列
+	//TODO: 支付结果通知上游使用kafka 延时重试队列
 	fmt.Println("receive payment from buyer")
 	return rowAffected, nil
 }
 
-func (p *PaymentService) FindPaymentRecordById(paymentId int64) (models.Payment, error) {
+func (p *PaymentService) FindPaymentRecordById(paymentId string) (models.Payment, error) {
 	// 1 先查询缓存
+	data := middleware.RedisGet(paymentId).([]string)
+	if len(data) != 0 { // 缓存命中
 
-	// 2 缓存查询不到再查数据库，查到数据先写缓存再返回
+		// 根据str反序列化成一个结构体
+		var paymentdata models.Payment
+		if err := json.Unmarshal([]byte(data[0]), &paymentdata); err != nil {
+			return models.Payment{}, err
+		} else {
+			return paymentdata, nil
+		}
+	}
 
-	return models.Payment{}, nil
+	//2 缓存查询不到再查数据库，查到数据先写缓存再返回
+	paymentdata, err := p.Dao.FindPaymentRecordById(paymentId)
+	if err != nil {
+		return models.Payment{}, err
+	}
+	middleware.RedisSet(paymentId, paymentdata)
+
+	return paymentdata, nil
 }
 
 func (p *PaymentService) UpdatePaymentRecord(payment models.Payment) (int64, error) {
-	// 延迟双删除
+	// 延迟双删
 	// 1 先删除缓存，更新数据库
-
-	// 2 再删除一次缓存
-
-	return 0, nil
+	middleware.RedisSet(strconv.FormatInt(payment.OrderId, 10), payment)
+	rowAffected, err := p.Dao.UpdatePaymentRecord(payment)
+	if err != nil {
+		return 0, err
+	}
+	// 2 再删除一次缓存, 容忍一定时间的脏数据
+	middleware.RedisSet(strconv.FormatInt(payment.OrderId, 10), payment)
+	return rowAffected, nil
 }

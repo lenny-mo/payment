@@ -55,14 +55,8 @@ type PaymentService interface {
 	// 4. 如果长时间未收到支付结果通知，触发主动查询流程，确保及时更新支付状态。
 	// 5. 返回支付状态，包括成功、失败、处理中等状态信息。
 	GetPaymentStatus(ctx context.Context, in *GetPaymentStatusRequest, opts ...client.CallOption) (*GetPaymentStatusResponse, error)
-	// 退款请求
-	// 1. 接收RefundPaymentRequest中的支付订单ID和退款理由。
-	// 2. 验证订单支付状态，确保订单已支付且在可退款的时间窗口内。
-	// 3. 调用第三方支付服务执行退款操作，处理可能的异常情况，如支付渠道维护或网络问题。
-	// 4. 退款成功后，更新订单状态和账务系统，确保数据的一致性。
-	// 5. 考虑到退款操作的敏感性，确保严格的安全措施，如数据加密和权限验证。
-	// 6. 提供退款成功或失败的响应，包含相关的退款信息。
-	RefundPayment(ctx context.Context, in *RefundPaymentRequest, opts ...client.CallOption) (*RefundPaymentResponse, error)
+	// 更新支付信息
+	UpdatePayment(ctx context.Context, in *UpdatePaymentRequest, opts ...client.CallOption) (*UpdatePaymentResponse, error)
 }
 
 type paymentService struct {
@@ -97,9 +91,9 @@ func (c *paymentService) GetPaymentStatus(ctx context.Context, in *GetPaymentSta
 	return out, nil
 }
 
-func (c *paymentService) RefundPayment(ctx context.Context, in *RefundPaymentRequest, opts ...client.CallOption) (*RefundPaymentResponse, error) {
-	req := c.c.NewRequest(c.name, "PaymentService.RefundPayment", in)
-	out := new(RefundPaymentResponse)
+func (c *paymentService) UpdatePayment(ctx context.Context, in *UpdatePaymentRequest, opts ...client.CallOption) (*UpdatePaymentResponse, error) {
+	req := c.c.NewRequest(c.name, "PaymentService.UpdatePayment", in)
+	out := new(UpdatePaymentResponse)
 	err := c.c.Call(ctx, req, out, opts...)
 	if err != nil {
 		return nil, err
@@ -123,21 +117,15 @@ type PaymentServiceHandler interface {
 	// 4. 如果长时间未收到支付结果通知，触发主动查询流程，确保及时更新支付状态。
 	// 5. 返回支付状态，包括成功、失败、处理中等状态信息。
 	GetPaymentStatus(context.Context, *GetPaymentStatusRequest, *GetPaymentStatusResponse) error
-	// 退款请求
-	// 1. 接收RefundPaymentRequest中的支付订单ID和退款理由。
-	// 2. 验证订单支付状态，确保订单已支付且在可退款的时间窗口内。
-	// 3. 调用第三方支付服务执行退款操作，处理可能的异常情况，如支付渠道维护或网络问题。
-	// 4. 退款成功后，更新订单状态和账务系统，确保数据的一致性。
-	// 5. 考虑到退款操作的敏感性，确保严格的安全措施，如数据加密和权限验证。
-	// 6. 提供退款成功或失败的响应，包含相关的退款信息。
-	RefundPayment(context.Context, *RefundPaymentRequest, *RefundPaymentResponse) error
+	// 更新支付信息
+	UpdatePayment(context.Context, *UpdatePaymentRequest, *UpdatePaymentResponse) error
 }
 
 func RegisterPaymentServiceHandler(s server.Server, hdlr PaymentServiceHandler, opts ...server.HandlerOption) error {
 	type paymentService interface {
 		MakePayment(ctx context.Context, in *MakePaymentRequest, out *MakePaymentResponse) error
 		GetPaymentStatus(ctx context.Context, in *GetPaymentStatusRequest, out *GetPaymentStatusResponse) error
-		RefundPayment(ctx context.Context, in *RefundPaymentRequest, out *RefundPaymentResponse) error
+		UpdatePayment(ctx context.Context, in *UpdatePaymentRequest, out *UpdatePaymentResponse) error
 	}
 	type PaymentService struct {
 		paymentService
@@ -158,6 +146,6 @@ func (h *paymentServiceHandler) GetPaymentStatus(ctx context.Context, in *GetPay
 	return h.PaymentServiceHandler.GetPaymentStatus(ctx, in, out)
 }
 
-func (h *paymentServiceHandler) RefundPayment(ctx context.Context, in *RefundPaymentRequest, out *RefundPaymentResponse) error {
-	return h.PaymentServiceHandler.RefundPayment(ctx, in, out)
+func (h *paymentServiceHandler) UpdatePayment(ctx context.Context, in *UpdatePaymentRequest, out *UpdatePaymentResponse) error {
+	return h.PaymentServiceHandler.UpdatePayment(ctx, in, out)
 }

@@ -20,25 +20,17 @@ service PaymentService {
     // 5. 返回支付状态，包括成功、失败、处理中等状态信息。
 	rpc GetPaymentStatus (GetPaymentStatusRequest) returns (GetPaymentStatusResponse);
 	
-
-	// 退款请求
-    // 1. 接收RefundPaymentRequest中的支付订单ID和退款理由。
-    // 2. 验证订单支付状态，确保订单已支付且在可退款的时间窗口内。
-    // 3. 调用第三方支付服务执行退款操作，处理可能的异常情况，如支付渠道维护或网络问题。
-    // 4. 退款成功后，更新订单状态和账务系统，确保数据的一致性。
-    // 5. 考虑到退款操作的敏感性，确保严格的安全措施，如数据加密和权限验证。
-    // 6. 提供退款成功或失败的响应，包含相关的退款信息。
-	rpc RefundPayment (RefundPaymentRequest) returns (RefundPaymentResponse);
+	// 更新支付信息
+	rpc UpdatePayment (UpdatePaymentRequest) returns (UpdatePaymentResponse);
 }
 
 // payment transaction 表结构体
 message Payment {
-	int64 TransactionId = 1;
-	int64 OrderId =2;
+	string TransactionId = 1;	// 下单的时候生成该订单的UUID，以后可以凭借这个ID查到支付信息
+	int64 OrderId =2;	// 这个我可以理解为requestId 
 	int32 TransactionStatus = 3;
 	string PaymentMethod =4;
 }
-
 
 // 
 message MakePaymentRequest {
@@ -49,22 +41,22 @@ message MakePaymentRequest {
 message MakePaymentResponse {
 	int32 Code = 1;
 	string  CodeMsg = 2; 
-	int64 PaymentID = 3;	// 如果成功，返回入库的UUID，否则返回一个0
+	string PaymentID = 3;	// 如果成功，返回入库的UUID，否则返回一个0
 }
 
 
 message GetPaymentStatusRequest {
-	int64 PaymentId = 1;
+	string PaymentId = 1;
 } 
 
 message GetPaymentStatusResponse {
 	Payment PaymentData =1;
 }
 
-message RefundPaymentRequest {
-	int64 PaymentId =1;
+message UpdatePaymentRequest {
+	Payment PaymentData =1;
 }
 
-message RefundPaymentResponse {
-	Payment PaymentData =1;
+message UpdatePaymentResponse {
+	string PaymentId =1;
 }
