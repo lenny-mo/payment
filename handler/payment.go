@@ -30,7 +30,7 @@ import (
 //		UpdatePayment(context.Context, *UpdatePaymentRequest, *UpdatePaymentResponse) error
 //	}
 type PaymentHandler struct {
-	paymentService services.PaymentService
+	PaymentService services.PaymentService
 }
 
 func (p *PaymentHandler) MakePayment(ctx context.Context, req *payment.MakePaymentRequest, res *payment.MakePaymentResponse) error {
@@ -43,7 +43,7 @@ func (p *PaymentHandler) MakePayment(ctx context.Context, req *payment.MakePayme
 		PaymentMethod:     "paypal",
 	}
 
-	rowaffect, err := p.paymentService.CreatePaymentRecord(pdata)
+	rowaffect, err := p.PaymentService.CreatePaymentRecord(pdata)
 	if rowaffect == 0 || err != nil {
 		res.Code = int32(FailedCode)
 		res.CodeMsg = codeMsgMap[FailedCode]
@@ -58,7 +58,7 @@ func (p *PaymentHandler) MakePayment(ctx context.Context, req *payment.MakePayme
 }
 
 func (p *PaymentHandler) GetPaymentStatus(ctx context.Context, req *payment.GetPaymentStatusRequest, res *payment.GetPaymentStatusResponse) error {
-	paymentdata, err := p.paymentService.FindPaymentRecordById(req.PaymentId)
+	paymentdata, err := p.PaymentService.FindPaymentRecordById(req.PaymentId)
 	if err != nil {
 		return err
 	}
@@ -80,7 +80,7 @@ func (p *PaymentHandler) UpdatePayment(ctx context.Context, req *payment.UpdateP
 		TransactionStatus: int8(req.PaymentData.TransactionStatus),
 	}
 	// 传递给service func
-	rowAffected, err := p.paymentService.UpdatePaymentRecord(reqPaymentData)
+	rowAffected, err := p.PaymentService.UpdatePaymentRecord(reqPaymentData)
 	if err != nil { // 更新出错
 		return err
 	}
