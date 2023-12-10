@@ -2,50 +2,82 @@ package middleware
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/go-redis/redis"
 )
 
 var redisClient *redis.Client
 
-const (
-	Password = ""
-	Host     = "redis6380"
-	Port     = 6379
-	DB       = 0
-	PoolSize = 100
-)
+// const (
+// 	Password = ""
+// 	Host     = "redis6380"
+// 	Port     = 6379
+// 	DB       = 0
+// 	PoolSize = 100
+// )
 
-func Init() (err error) {
-	redisClient = redis.NewClient(&redis.Options{
-		Addr:     fmt.Sprintf("%s:%d", Host, Port),
-		Password: Password,
-		DB:       DB,
-		PoolSize: PoolSize,
-		//Password: viper.GetString("redis.password"),
-		//DB:       viper.GetInt("redis.db"),
-		//PoolSize: viper.GetInt("redis.poolsize"),
-	})
-
-	_, err = redisClient.Ping().Result()
-	if err != nil {
-		fmt.Printf("connect redis failed, err:%v\n", err)
-		return
+func StartRDB(host string, port int64, db, poolSize int, password string) error {
+	// 使用传入的参数初始化 Redis 连接配置
+	redisAddr := fmt.Sprintf("%s:%d", host, port)
+	options := &redis.Options{
+		Addr:     redisAddr,
+		Password: password,
+		DB:       db,
+		PoolSize: poolSize,
 	}
 
-	return
+	// 创建 Redis 客户端
+	redisClient := redis.NewClient(options)
+
+	// 使用 Ping() 方法测试连接，确保连接成功
+	_, err := redisClient.Ping().Result()
+	if err != nil {
+		fmt.Printf("connect redis failed, err:%v\n", err)
+		return err
+	}
+
+	return nil
 }
 
 func Close() {
 	redisClient.Close()
 }
 
-// TODO
 func RedisSet(key string, data interface{}) bool {
+	// 检查 Redis 客户端是否已初始化
+	if redisClient == nil {
+		fmt.Println("Redis client is not initialized")
+		return false
+	}
+
+	// 将数据存入 Redis 中
+	err := redisClient.Set(key, data, 24*time.Hour).Err()
+	if err != nil {
+		fmt.Println("Error setting data in Redis:", err)
+		return false
+	}
+
 	return true
 }
 
-// TODO
 func RedisGet(id string) interface{} {
-	return nil
+	// 检查 Redis 客户端是否已初始化
+	if redisClient == nil {
+		fmt.Println("Redis client is not initialized")
+		return nil
+	}
+
+	// 从 Redis 中获取数据
+	val, err := redisClient.Get(id).Result()
+	if err != nil {
+		if err == redis.Nil {
+			fmt.Println("Key does not exist in Redis")
+			return nil
+		}
+		fmt.Println("Error getting data from Redis:", err)
+		return nil
+	}
+
+	return val
 }

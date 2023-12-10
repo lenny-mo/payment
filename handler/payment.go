@@ -3,9 +3,10 @@ package handler
 import (
 	"context"
 	"errors"
-	"payment/domain/models"
-	"payment/domain/services"
-	"payment/proto/payment"
+
+	"github.com/lenny-mo/payment/domain/models"
+	"github.com/lenny-mo/payment/domain/services"
+	"github.com/lenny-mo/payment/proto/payment"
 
 	"github.com/google/uuid"
 )

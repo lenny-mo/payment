@@ -1,7 +1,7 @@
 package dao
 
 import (
-	"payment/domain/models"
+	"github.com/lenny-mo/payment/domain/models"
 
 	"gorm.io/gorm"
 )
