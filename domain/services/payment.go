@@ -6,13 +6,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
+	"sync"
+	"time"
+
 	"github.com/lenny-mo/payment/domain/dao"
 	"github.com/lenny-mo/payment/domain/models"
 	"github.com/lenny-mo/payment/middleware"
 	"github.com/lenny-mo/payment/paypal"
-	"strconv"
-	"sync"
-	"time"
 )
 
 type PaymentServiceInterface interface {
@@ -59,20 +60,24 @@ func (p *PaymentService) CreatePaymentRecord(payment models.Payment) (int64, err
 	// 生成一个payment request id
 	paymentRequestId := paypal.UUID()
 	// 计算订单的总金额
-	amount := "100"
+	amount := "10"
 	// 再创建订单
 	orderMapping := paypal.CreateOrder(accessToken, paymentRequestId, amount)
+	fmt.Println(orderMapping)
 	// 获取创建的订单id和需要用户支付的url
 	orderId, userPayURL := orderMapping["id"], orderMapping["payer-action"]
 	// 这里可以先尝试在控制台打印url
-	fmt.Println(userPayURL)
+	fmt.Println("请点击付款：", userPayURL)
 	// paypal 需要商家主动获取订单信息
 
+	// 使用waitgroup + select
 	var rowAffected int64
-	ch := make(chan chanData, 1)
+
+	ch := make(chan chanData, 1) // 创建一个通道 只能接收一个支付成功信号
 	timer := time.NewTimer(15 * time.Minute)
 
 	var wg sync.WaitGroup
+
 outerloop:
 	for {
 		// 持续监听用户支付信息
@@ -101,24 +106,47 @@ outerloop:
 			middleware.RedisSet(strconv.FormatInt(payment.OrderId, 10), payment) // 更新缓存
 			break outerloop                                                      //跳出当前for循环
 		default:
-			time.Sleep(time.Second)
+			fmt.Println("请点击付款：", userPayURL)
+			time.Sleep(10 * time.Second)
 			fmt.Println("waiting for user paying the order")
 		}
 	}
 
-	//TODO: 支付结果通知上游使用kafka 延时重试队列
+	// for {
+	// 	if ok, _ := paypal.CapturePayment(orderId, paymentRequestId, accessToken); ok {
+	// 		break
+	// 	}
+	// 	fmt.Println("请点击付款：", userPayURL)
+	// 	time.Sleep(5 * time.Second)
+	// }
+
+	// var err error
+	// rowAffected, err = p.Dao.CreatePaymentRecord(payment) // 存储进入数据库
+	// if err != nil {
+	// 	// zap
+	// 	return 0, err
+	// }
+	// ok := middleware.RedisSet(strconv.FormatInt(payment.OrderId, 10), payment) // 更新缓存
+
+	// if !ok {
+	// 	fmt.Println("插入rediss失败")
+	// }
 	fmt.Println("receive payment from buyer")
 	return rowAffected, nil
 }
 
 func (p *PaymentService) FindPaymentRecordById(paymentId string) (models.Payment, error) {
 	// 1 先查询缓存
-	data := middleware.RedisGet(paymentId).([]string)
+	var data string
+	// 判断是否返回nil 值
+	if v := middleware.RedisGet(paymentId); v != nil {
+		data = v.(string)
+	}
 	if len(data) != 0 { // 缓存命中
 
 		// 根据str反序列化成一个结构体
 		var paymentdata models.Payment
-		if err := json.Unmarshal([]byte(data[0]), &paymentdata); err != nil {
+		if err := json.Unmarshal([]byte(data), &paymentdata); err != nil {
 			return models.Payment{}, err
 		} else {
 			return paymentdata, nil
@@ -130,6 +158,7 @@ func (p *PaymentService) FindPaymentRecordById(paymentId string) (models.Payment
 	if err != nil {
 		return models.Payment{}, err
 	}
+
 	middleware.RedisSet(paymentId, paymentdata)
 
 	return paymentdata, nil

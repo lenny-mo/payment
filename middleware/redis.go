@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -28,13 +29,15 @@ func StartRDB(host string, port int64, db, poolSize int, password string) error 
 	}
 
 	// 创建 Redis 客户端
-	redisClient := redis.NewClient(options)
+	redisClient = redis.NewClient(options)
 
 	// 使用 Ping() 方法测试连接，确保连接成功
 	_, err := redisClient.Ping().Result()
 	if err != nil {
 		fmt.Printf("connect redis failed, err:%v\n", err)
 		return err
+	} else {
+		fmt.Println("connect redis success")
 	}
 
 	return nil
@@ -51,8 +54,14 @@ func RedisSet(key string, data interface{}) bool {
 		return false
 	}
 
+	// 数据序列化为bytes
+	datastr, err := json.Marshal(data)
+	if err != nil {
+		fmt.Println("error during json marshal")
+		return false
+	}
 	// 将数据存入 Redis 中
-	err := redisClient.Set(key, data, 24*time.Hour).Err()
+	err = redisClient.Set(key, datastr, 24*time.Hour).Err()
 	if err != nil {
 		fmt.Println("Error setting data in Redis:", err)
 		return false
@@ -72,7 +81,7 @@ func RedisGet(id string) interface{} {
 	val, err := redisClient.Get(id).Result()
 	if err != nil {
 		if err == redis.Nil {
-			fmt.Println("Key does not exist in Redis")
+			fmt.Printf("Key %v does not exist in Redis", id)
 			return nil
 		}
 		fmt.Println("Error getting data from Redis:", err)

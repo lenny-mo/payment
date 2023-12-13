@@ -25,7 +25,7 @@ func NewPaymentDAO(db *gorm.DB) PaymentDAOInterface {
 }
 
 func (p *PaymentDAO) CreatePaymentRecord(data models.Payment) (int64, error) {
-	result := p.db.Create(data)
+	result := p.db.Create(&data)
 	return result.RowsAffected, result.Error
 }
 
@@ -49,6 +49,6 @@ func (p *PaymentDAO) UpdatePaymentRecord(payment models.Payment) (int64, error) 
 	// 找到数据之后，更新数据
 	data.PaymentMethod = payment.PaymentMethod
 	data.TransactionStatus = payment.TransactionStatus
-	result := p.db.Save(data)
+	result := p.db.Save(&data)
 	return result.RowsAffected, result.Error
 }

@@ -2,8 +2,6 @@ package main
 
 import (
 	"fmt"
-	"net"
-	"net/http"
 	"strconv"
 
 	"github.com/lenny-mo/payment/conf"
@@ -15,7 +13,6 @@ import (
 	"github.com/lenny-mo/payment/proto/payment"
 	"github.com/lenny-mo/payment/utils"
 
-	"github.com/afex/hystrix-go/hystrix"
 	"github.com/micro/go-micro/v2"
 	"github.com/micro/go-micro/v2/registry"
 	"github.com/micro/go-plugins/registry/consul/v2"
@@ -55,8 +52,6 @@ func main() {
 
 	// 4. 获取mysql配置
 	mysqlConf := conf.GetMysqlFromConsul(consulCof, "mysql")
-	// 获取redis配置
-	redisConf := conf.GetRedisFromConsul(consulCof, "redis")
 
 	// 5. 初始化数据库连接
 	dsn := mysqlConf.User + ":" + mysqlConf.Password + "@tcp(" + mysqlConf.Host + ":" + strconv.FormatInt(mysqlConf.Port, 10) + ")/" + mysqlConf.DB + "?charset=utf8mb4&parseTime=True&loc=Local"
@@ -66,25 +61,28 @@ func main() {
 		panic(err)
 	}
 
-	if db.Migrator().HasTable(&models.Payment{}) {
+	if !db.Migrator().HasTable(&models.Payment{}) {
 		db.Migrator().CreateTable(&models.Payment{})
 	}
 
+	// 获取redis配置
+	redisConf := conf.GetRedisFromConsul(consulCof, "redis")
 	// 初始化redis连接
 	middleware.StartRDB(redisConf.Host, redisConf.Port, redisConf.DB, redisConf.PoolSize, redisConf.Password)
+	defer middleware.Close()
 
 	// 6 设置prometheus
 	utils.PrometheusBoot(9092)
 
-	//熔断
-	hystrixStreamHandler := hystrix.NewStreamHandler()
-	hystrixStreamHandler.Start()
+	// //熔断
+	// hystrixStreamHandler := hystrix.NewStreamHandler()
+	// hystrixStreamHandler.Start()
 
-	//启动监听
-	go func() {
-		err = http.ListenAndServe(net.JoinHostPort("127.0.0.1", "9192"), hystrixStreamHandler)
-		zap.L().Info(err.Error())
-	}()
+	// //启动监听
+	// go func() {
+	// 	err = http.ListenAndServe(net.JoinHostPort("127.0.0.1", "9192"), hystrixStreamHandler)
+	// 	zap.L().Info(err.Error())
+	// }()
 
 	// 7 创建服务
 	service := micro.NewService(

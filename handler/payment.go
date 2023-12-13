@@ -39,7 +39,7 @@ func (p *PaymentHandler) MakePayment(ctx context.Context, req *payment.MakePayme
 	paymentUUID := uuid.New().String()
 	pdata := models.Payment{
 		TransactionId:     paymentUUID,
-		OrderId:           req.UserId,
+		OrderId:           req.OrderId,
 		TransactionStatus: 0, // 未支付
 		PaymentMethod:     "paypal",
 	}
