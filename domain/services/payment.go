@@ -112,25 +112,6 @@ outerloop:
 		}
 	}
 
-	// for {
-	// 	if ok, _ := paypal.CapturePayment(orderId, paymentRequestId, accessToken); ok {
-	// 		break
-	// 	}
-	// 	fmt.Println("请点击付款：", userPayURL)
-	// 	time.Sleep(5 * time.Second)
-	// }
-
-	// var err error
-	// rowAffected, err = p.Dao.CreatePaymentRecord(payment) // 存储进入数据库
-	// if err != nil {
-	// 	// zap
-	// 	return 0, err
-	// }
-	// ok := middleware.RedisSet(strconv.FormatInt(payment.OrderId, 10), payment) // 更新缓存
-
-	// if !ok {
-	// 	fmt.Println("插入rediss失败")
-	// }
 	fmt.Println("receive payment from buyer")
 	return rowAffected, nil
 }
@@ -167,12 +148,14 @@ func (p *PaymentService) FindPaymentRecordById(paymentId string) (models.Payment
 func (p *PaymentService) UpdatePaymentRecord(payment models.Payment) (int64, error) {
 	// 延迟双删
 	// 1 先删除缓存，更新数据库
-	middleware.RedisSet(strconv.FormatInt(payment.OrderId, 10), payment)
+	middleware.RedisDelete(strconv.FormatInt(payment.OrderId, 10))
 	rowAffected, err := p.Dao.UpdatePaymentRecord(payment)
 	if err != nil {
 		return 0, err
 	}
+
+	time.Sleep(100 * time.Millisecond)
 	// 2 再删除一次缓存, 容忍一定时间的脏数据
-	middleware.RedisSet(strconv.FormatInt(payment.OrderId, 10), payment)
+	middleware.RedisDelete(strconv.FormatInt(payment.OrderId, 10))
 	return rowAffected, nil
 }

@@ -90,3 +90,19 @@ func RedisGet(id string) interface{} {
 
 	return val
 }
+
+func RedisDelete(key string) bool {
+	// 检查 Redis 客户端是否已初始化
+	if redisClient == nil {
+		fmt.Println("Redis client is not initialized")
+		return false
+	}
+
+	_, err := redisClient.Del(key).Result()
+	if err != nil {
+		fmt.Println("Delete Redis key failed", err.Error())
+		return false
+	}
+
+	return true
+}
