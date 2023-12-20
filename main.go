@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strconv"
 
+	"github.com/lenny-mo/emall-utils/tracer"
 	"github.com/lenny-mo/payment/conf"
 	"github.com/lenny-mo/payment/domain/dao"
 	"github.com/lenny-mo/payment/domain/models"
@@ -20,7 +21,6 @@ import (
 	ratelimit "github.com/micro/go-plugins/wrapper/ratelimiter/uber/v2"
 	opentracing2 "github.com/micro/go-plugins/wrapper/trace/opentracing/v2"
 	"github.com/opentracing/opentracing-go"
-	"go.uber.org/zap"
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
 )
@@ -42,13 +42,15 @@ func main() {
 	})
 
 	// 3 链路追踪
-	tracer, tracerio, err := utils.NewTracer("payment-server", "127.0.0.1:6831")
+	serviceName := "go.micro.service.payment"
+	// 3 链路追踪
+	err = tracer.InitTracer(serviceName, "127.0.0.1:6831")
 	if err != nil {
-		zap.L().Error(err.Error()) // 记录日志
-		panic(err)
+		fmt.Println(err)
+		return
 	}
-	defer tracerio.Close()
-	opentracing.SetGlobalTracer(tracer) // 设置全局的链路追踪
+	defer tracer.Closer.Close()
+	opentracing.SetGlobalTracer(tracer.Tracer)
 
 	// 4. 获取mysql配置
 	mysqlConf := conf.GetMysqlFromConsul(consulCof, "mysql")
@@ -74,31 +76,19 @@ func main() {
 	// 6 设置prometheus
 	utils.PrometheusBoot(9092)
 
-	// //熔断
-	// hystrixStreamHandler := hystrix.NewStreamHandler()
-	// hystrixStreamHandler.Start()
-
-	// //启动监听
-	// go func() {
-	// 	err = http.ListenAndServe(net.JoinHostPort("127.0.0.1", "9192"), hystrixStreamHandler)
-	// 	zap.L().Info(err.Error())
-	// }()
-
 	// 7 创建服务
 	service := micro.NewService(
-		micro.Name("go.micro.service.payment"),
+		micro.Name(serviceName),
 		micro.Version("latest"),
 		micro.Address("127.0.0.1:8085"), // 服务监听地址
 		// 使用consul注册中心
 		micro.Registry(consulRegistry),
-		// 添加链路追踪
-		micro.WrapHandler(opentracing2.NewHandlerWrapper(opentracing.GlobalTracer())),
 		// uber 漏桶 添加限流 每秒处理1000·个请求
 		micro.WrapHandler(ratelimit.NewHandlerWrapper(conf.QPS)),
 		// 添加prometheus
 		micro.WrapHandler(prometheus.NewHandlerWrapper()),
 		// 客户端链路追踪
-		micro.WrapClient(opentracing2.NewClientWrapper(opentracing.GlobalTracer())),
+		micro.WrapHandler(opentracing2.NewHandlerWrapper(opentracing.GlobalTracer())),
 		// 客户端pro
 		micro.WrapClient(prometheus.NewClientWrapper()),
 	)
