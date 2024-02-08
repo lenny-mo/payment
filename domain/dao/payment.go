@@ -4,6 +4,7 @@ import (
 	"github.com/lenny-mo/payment/domain/models"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 type PaymentDAOInterface interface {
@@ -39,16 +40,29 @@ func (p *PaymentDAO) FindPaymentRecordById(PaymentId string) (models.Payment, er
 }
 
 func (p *PaymentDAO) UpdatePaymentRecord(payment models.Payment) (int64, error) {
-	data, err := p.FindPaymentRecordById(payment.TransactionId)
+	// 悲观锁更新
+
+	// 1 开启事务
+	tx := p.db.Begin()
+	defer func() {
+		if r := recover(); r != nil {
+			tx.Rollback()
+		}
+	}()
+
+	// 2 添加X锁查询
+	olddata := new(models.Payment)
+	err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(olddata, "transaction_id = ?", payment.TransactionId).Error
 	if err != nil {
 		// 插入数据
-		result := p.db.Create(payment)
-		return result.RowsAffected, result.Error
+		return 0, err
 	}
 
 	// 找到数据之后，更新数据
-	data.PaymentMethod = payment.PaymentMethod
-	data.TransactionStatus = payment.TransactionStatus
-	result := p.db.Save(&data)
+	olddata.PaymentMethod = payment.PaymentMethod
+	olddata.TransactionStatus = payment.TransactionStatus
+	result := p.db.Save(&olddata)
+
+	tx.Commit()
 	return result.RowsAffected, result.Error
 }

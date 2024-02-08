@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	m "github.com/lenny-mo/emall-utils/metrics"
 	"github.com/lenny-mo/payment/domain/dao"
 	"github.com/lenny-mo/payment/domain/models"
 	"github.com/lenny-mo/payment/middleware"
@@ -82,7 +83,9 @@ outerloop:
 	for {
 		// 持续监听用户支付信息
 		wg.Add(1)
+		m.PaymentGoroutinesInc() // go num+1
 		go func(wg *sync.WaitGroup) {
+			defer m.PaymentGoroutinesDec() // go num-1
 			defer wg.Done()
 			ok, err := paypal.CapturePayment(orderId, paymentRequestId, accessToken)
 			if ok {
@@ -146,15 +149,17 @@ func (p *PaymentService) FindPaymentRecordById(paymentId string) (models.Payment
 }
 
 func (p *PaymentService) UpdatePaymentRecord(payment models.Payment) (int64, error) {
-	// 延迟双删
-	// 1 先删除缓存，更新数据库
+	// 延迟双删 + 锁
+	// 1 先删除缓存
 	middleware.RedisDelete(strconv.FormatInt(payment.OrderId, 10))
+
+	// 更新数据库
 	rowAffected, err := p.Dao.UpdatePaymentRecord(payment)
 	if err != nil {
 		return 0, err
 	}
 
-	time.Sleep(100 * time.Millisecond)
+	time.Sleep(50 * time.Millisecond)
 	// 2 再删除一次缓存, 容忍一定时间的脏数据
 	middleware.RedisDelete(strconv.FormatInt(payment.OrderId, 10))
 	return rowAffected, nil

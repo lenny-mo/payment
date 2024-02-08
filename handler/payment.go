@@ -3,6 +3,9 @@ package handler
 import (
 	"context"
 	"errors"
+	"time"
+
+	m "github.com/lenny-mo/emall-utils/metrics"
 
 	"github.com/lenny-mo/payment/domain/models"
 	"github.com/lenny-mo/payment/domain/services"
@@ -34,7 +37,24 @@ type PaymentHandler struct {
 	PaymentService services.PaymentService
 }
 
+// 用于指定prometheus监控label
+const (
+	SERVICE = "payment"
+	VERSION = "v1.0.0"
+	OS      = "mac"
+)
+
 func (p *PaymentHandler) MakePayment(ctx context.Context, req *payment.MakePaymentRequest, res *payment.MakePaymentResponse) error {
+	// prometheus 请求数+1
+	m.CounterRequestProcess(SERVICE, VERSION, OS)
+	// 记录支付处理开始时间
+	startTime := time.Now()
+	defer func() {
+		duration := time.Since(startTime).Seconds()
+		m.RecordPaymentResponseTime(SERVICE, VERSION, OS, duration) // Histogram 指标
+		m.TaskExecutionTime(SERVICE, VERSION, OS, duration)         // Summary 指标
+	}()
+
 	// 构建一个payment 结构体
 	paymentUUID := uuid.New().String()
 	pdata := models.Payment{
@@ -59,6 +79,16 @@ func (p *PaymentHandler) MakePayment(ctx context.Context, req *payment.MakePayme
 }
 
 func (p *PaymentHandler) GetPaymentStatus(ctx context.Context, req *payment.GetPaymentStatusRequest, res *payment.GetPaymentStatusResponse) error {
+	// prometheus 请求数+1
+	m.CounterRequestProcess(SERVICE, VERSION, OS)
+	// 记录支付处理开始时间
+	startTime := time.Now()
+	defer func() {
+		duration := time.Since(startTime).Seconds()
+		m.RecordPaymentResponseTime(SERVICE, VERSION, OS, duration) // Histogram 指标
+		m.TaskExecutionTime(SERVICE, VERSION, OS, duration)         // Summary 指标
+	}()
+
 	paymentdata, err := p.PaymentService.FindPaymentRecordById(req.PaymentId)
 	if err != nil {
 		return err
@@ -73,6 +103,16 @@ func (p *PaymentHandler) GetPaymentStatus(ctx context.Context, req *payment.GetP
 }
 
 func (p *PaymentHandler) UpdatePayment(ctx context.Context, req *payment.UpdatePaymentRequest, res *payment.UpdatePaymentResponse) error {
+	// prometheus 请求数+1
+	m.CounterRequestProcess(SERVICE, VERSION, OS)
+	// 记录支付处理开始时间
+	startTime := time.Now()
+	defer func() {
+		duration := time.Since(startTime).Seconds()
+		m.RecordPaymentResponseTime(SERVICE, VERSION, OS, duration) // Histogram 指标
+		m.TaskExecutionTime(SERVICE, VERSION, OS, duration)         // Summary 指标
+	}()
+
 	// 根据req 的payment data 构建一个models.Payment
 	reqPaymentData := models.Payment{
 		TransactionId:     req.PaymentData.TransactionId,
